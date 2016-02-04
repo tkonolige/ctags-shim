@@ -14,6 +14,7 @@ import qualified Data.Text            as T
 import           Options.Applicative
 
 import           System.Directory     (getHomeDirectory)
+import           System.FilePath
 import           System.FilePath.Find
 import "Glob"    System.FilePath.Glob
 import           System.IO.Error
@@ -53,14 +54,15 @@ readConfig file = catch (decodeFile file)
                                          >> return Nothing)
 
 data Options = Options
-  { append  :: Bool
-  , tagfile :: FilePath
-  , recurse :: Bool
-  , sort    :: Bool
-  , verbose :: Bool
-  , exclude :: [Pattern]
-  , files   :: [FilePath]
-  , config  :: FilePath
+  { append      :: Bool
+  , tagfile     :: FilePath
+  , recurse     :: Bool
+  , sort        :: Bool
+  , verbose     :: Bool
+  , exclude     :: [Pattern]
+  , files       :: [FilePath]
+  , config      :: FilePath
+  , nogitignore :: Bool
   } deriving Show
 
 opts :: FilePath -> Parser Options
@@ -109,6 +111,10 @@ opts home = Options
      <> value (home <> "/.ctags-shim.yaml")
      <> showDefault
       )
+  <*> switch
+      ( long "no-gitignore"
+     <> help "ignore .gitignore files"
+      )
 
 type Extension = String
 data Executable = Executable
@@ -127,10 +133,13 @@ findFiles :: Bool -> [FilePath] -> [Pattern] -> [Extension] -> IO [FilePath]
 findFiles recurse paths pats exs = mapM findFiltered paths
                                    >>= return . concat
   where
-    findFiltered = find (excludes &&? return recurse) (extensions &&? excludes)
+    findFiltered = find (excludes pats &&? return recurse) (extensions &&? excludes pats)
     extensions = foldr (\e b -> b ||? extension ==? '.':e) (return False) exs
-    excludes = foldr (\pat b -> b ||? globMatch pat filePath) (return False) pats
-                 ==? False -- want to make sure no excludes are true
+
+excludes :: [Pattern] -> FindClause Bool
+excludes pats = foldr (\pat b -> b ||? globMatch pat filePath) (return False) pats
+                ==? False -- want to make sure no excludes are true
+  where
     globMatch pat = liftM (match pat)
 
 -- TODO: error handling
@@ -142,12 +151,24 @@ tagsExec (Executable exe flags extensions) files = B.concat <$> mapM execOne fil
       (code, stdout, stderr) <- readProcessWithExitCode exe (flags <> [file]) B.empty
       return stdout
 
+-- TODO: *.o should be **/*.o
+-- TODO: support !
+-- TODO: support comments
+findGitIgnore :: FilePath -> [Pattern] -> IO [Pattern]
+findGitIgnore path pats = do
+  ignores <- find (excludes pats) (fileName ==? ".gitignore") path
+  files <- mapM readFile ignores >>= return . map lines
+  return $ map compile $ concat $ zipWith f ignores files
+  where
+    f file pats = map ((takeDirectory file) </>) pats
+
 -- TODO: check that tags file is valid
 -- TODO: update only relevant parts
 -- TODO: lock file
 -- TODO: sorting
 -- TODO: verbose
 -- TODO: pay attention to .gitignore
+-- TODO: pay attention to other ignore files
 -- TODO: merge default executables with conf
 -- TODO: look for local config
 main :: IO ()
@@ -158,8 +179,12 @@ main = do
   let gexcludes = maybe [] globalExcludes conf
   let excludes = (exclude opts) <> gexcludes
   let execs = maybe defaultExecutables executables conf
+  gitexcludes <- if not (nogitignore opts)
+                 then concat <$> mapM (flip findGitIgnore excludes) (files opts)
+                 else return []
+  print $ map decompile gitexcludes
 
-  found <- mapM (findFiles (recurse opts) (files opts) excludes) (map extensions execs)
+  found <- mapM (findFiles (recurse opts) (files opts) (excludes <> gitexcludes)) (map extensions execs)
   tags <- zipWithM tagsExec execs found
-  (if append opts then B.writeFile else B.appendFile) (tagfile opts) (B.concat tags)
+  (if append opts then B.appendFile else B.writeFile) (tagfile opts) (B.concat tags)
   return ()
