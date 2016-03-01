@@ -182,9 +182,10 @@ main = do
   gitexcludes <- if not (nogitignore opts)
                  then concat <$> mapM (flip findGitIgnore excludes) (files opts)
                  else return []
-  print $ map decompile gitexcludes
 
   found <- mapM (findFiles (recurse opts) (files opts) (excludes <> gitexcludes)) (map extensions execs)
   tags <- zipWithM tagsExec execs found
-  (if append opts then B.appendFile else B.writeFile) (tagfile opts) (B.concat tags)
+  if tagfile opts == "-"
+  then B.putStrLn $ B.concat tags
+  else (if append opts then B.appendFile else B.writeFile) (tagfile opts) (B.concat tags)
   return ()
