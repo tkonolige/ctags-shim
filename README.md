@@ -2,6 +2,8 @@
 
 This is a simple program that bundles a variety of tag generating binaries into one command. It can easily be extended via a config file.
 
+`ctags-shim` ignores files listed in `.gitignore`.
+
 ## Config file
 
 The default ctags-shim config is located at `~/.ctags-shim.yaml` and has a format like below:
