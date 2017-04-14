@@ -29,6 +29,18 @@ executables:
 
 The `excludes` section is a list of glob patterns to be ignored when `ctags-shim` recurses through directories.
 
+## Installing
+
+You need GHC and cabal for installation.
+
+```
+> git clone https://github.com/tkonolige/ctags-shim.git
+> cd ctags-shim
+> cabal install
+```
+
+The default install location is `~/.cabal/bin`. You probably want to add this to your `$PATH`.
+
 ## Adding a tags generator
 
 To add a new generator, add a new entry under the `executables` section of the config. The format should be:
