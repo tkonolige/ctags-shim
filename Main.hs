@@ -11,6 +11,7 @@ import           Data.ByteString      (ByteString)
 import qualified Data.ByteString      as B
 import qualified Data.HashMap.Strict  as H
 import qualified Data.Text            as T
+import           Data.Monoid
 import           Options.Applicative
 
 import           System.Directory     (getHomeDirectory)
